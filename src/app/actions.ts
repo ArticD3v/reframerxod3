@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import mammoth from "mammoth";
 import fs from "fs/promises";
 import path from "path";
-import { generateRephrasedDocument } from "@/ai/flows/generate-rephrased-document";
+import { generateRephrasedDocument } from "@/lib/ai/generate-rephrased-document";
 import { z } from "zod";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";

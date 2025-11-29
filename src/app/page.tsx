@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -7,14 +6,10 @@ import { generateDocument } from '@/app/actions';
 import JournalForm from '@/components/journal-form';
 import DownloadSection from '@/components/download-section';
 import { LogOut, Wand2, Loader2, ShieldAlert, Clock } from 'lucide-react';
-import { useUser } from '@/firebase/auth/use-user';
+import { useUser } from '@/hooks/use-user';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { getAuth, signOut } from 'firebase/auth';
-import { doc } from "firebase/firestore";
-import { useDoc } from "@/firebase/firestore/use-doc";
-import { useFirestore } from "@/firebase";
-import { useMemoFirebase } from "@/firebase/firestore/use-memo-firebase";
+import { supabase } from '@/lib/supabase/client';
 import AdminPanel from '@/components/admin-panel';
 
 type GeneratedFileData = {
@@ -23,12 +18,12 @@ type GeneratedFileData = {
 };
 
 // In a real application, this would be determined by custom claims or a database role.
-const ADMIN_EMAIL = 'admin@aurora.com';
+const ADMIN_EMAIL = 'admin@zorvexra.com';
 
 type UserProfile = {
   email: string;
   status: 'pending' | 'active' | 'banned';
-  createdAt: any;
+  created_at: string;
 }
 
 export default function Home() {
@@ -36,24 +31,53 @@ export default function Home() {
   const [generatedFile, setGeneratedFile] = useState<GeneratedFileData | null>(
     null
   );
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
   const { toast } = useToast();
   const router = useRouter();
   const { user, isLoading: isUserLoading } = useUser();
   const isAdmin = user?.email === ADMIN_EMAIL;
-  const firestore = useFirestore();
-
-  const userProfileRef = useMemoFirebase(() => {
-    if (!user?.uid || !firestore) return null;
-    return doc(firestore, "users", user.uid);
-  }, [user?.uid, firestore]);
-
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userProfileRef);
 
   useEffect(() => {
     if (!isUserLoading && !user) {
       router.push('/login');
     }
   }, [user, isUserLoading, router]);
+
+  useEffect(() => {
+    async function fetchUserProfile() {
+      if (!user) {
+        setIsProfileLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.warn('Profile fetch error:', error);
+          // If profile doesn't exist, assume pending
+          setUserProfile({
+            email: user.email || '',
+            status: 'pending',
+            created_at: new Date().toISOString(),
+          });
+        } else {
+          setUserProfile(data);
+        }
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+      } finally {
+        setIsProfileLoading(false);
+      }
+    }
+
+    fetchUserProfile();
+  }, [user]);
 
   const handleFormSubmit = async (data: FormData) => {
     if (!user) {
@@ -96,24 +120,23 @@ export default function Home() {
   };
 
   const handleSignOut = async () => {
-    const auth = getAuth();
-    await signOut(auth);
+    await supabase.auth.signOut();
     router.push('/login');
   };
 
   const renderContent = () => {
     if (isUserLoading || (user && isProfileLoading)) {
       return (
-         <div className="flex flex-col items-center justify-center gap-4 p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Loading your workspace...</p>
-          </div>
+        <div className="flex flex-col items-center justify-center gap-4 p-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading your workspace...</p>
+        </div>
       );
     }
 
     if (!user) {
-       // Should be handled by useEffect, but as a fallback
-       return null;
+      // Should be handled by useEffect, but as a fallback
+      return null;
     }
 
     if (isAdmin) {
@@ -121,7 +144,7 @@ export default function Home() {
     }
 
     if (userProfile) {
-       switch (userProfile.status) {
+      switch (userProfile.status) {
         case 'active':
           return generatedFile ? (
             <DownloadSection
@@ -138,32 +161,32 @@ export default function Home() {
         case 'pending':
           return (
             <div className="text-center p-8 bg-card border rounded-lg shadow-sm">
-                <Clock className="mx-auto h-12 w-12 text-primary mb-4"/>
-                <h2 className="text-2xl font-bold font-headline mb-2">Account Pending Approval</h2>
-                <p className="text-muted-foreground">
-                    Your account is currently awaiting administrator approval. Please check back later.
-                </p>
+              <Clock className="mx-auto h-12 w-12 text-primary mb-4" />
+              <h2 className="text-2xl font-bold font-headline mb-2">Account Pending Approval</h2>
+              <p className="text-muted-foreground">
+                Your account is currently awaiting administrator approval. Please check back later.
+              </p>
             </div>
           )
         case 'banned':
-             return (
-                <div className="text-center p-8 bg-card border border-destructive/50 rounded-lg shadow-sm">
-                    <ShieldAlert className="mx-auto h-12 w-12 text-destructive mb-4"/>
-                    <h2 className="text-2xl font-bold font-headline mb-2">Access Restricted</h2>
-                    <p className="text-muted-foreground">
-                        Your account has been suspended. Please contact support for more information.
-                    </p>
-                </div>
-            )
+          return (
+            <div className="text-center p-8 bg-card border border-destructive/50 rounded-lg shadow-sm">
+              <ShieldAlert className="mx-auto h-12 w-12 text-destructive mb-4" />
+              <h2 className="text-2xl font-bold font-headline mb-2">Access Restricted</h2>
+              <p className="text-muted-foreground">
+                Your account has been suspended. Please contact support for more information.
+              </p>
+            </div>
+          )
         default:
           return <p>Unknown account status.</p>;
       }
     }
-     return (
-        <div className="flex flex-col items-center justify-center gap-4 p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Verifying account...</p>
-        </div>
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-muted-foreground">Verifying account...</p>
+      </div>
     );
   }
 
@@ -172,7 +195,7 @@ export default function Home() {
       <div className="w-full max-w-2xl mx-auto">
         <header className="text-center mb-8 relative">
           {user && (
-             <div className="absolute top-0 right-0">
+            <div className="absolute top-0 right-0">
               <Button variant="ghost" onClick={handleSignOut}>
                 <LogOut className="mr-2 h-4 w-4" /> Sign Out
               </Button>
@@ -182,11 +205,11 @@ export default function Home() {
             <Wand2 className="h-10 w-10" />
             Journal Reframer
           </h1>
-           {user && !isAdmin && (
-             <p className="text-muted-foreground mt-2 text-lg">
-                Effortlessly rephrase and personalize your reflective journals.
-             </p>
-            )}
+          {user && !isAdmin && (
+            <p className="text-muted-foreground mt-2 text-lg">
+              Effortlessly rephrase and personalize your reflective journals.
+            </p>
+          )}
         </header>
 
         {renderContent()}

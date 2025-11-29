@@ -1,4 +1,3 @@
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,7 +13,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
+import { supabase } from '@/lib/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -41,9 +40,15 @@ export default function ForgotPasswordPage() {
 
   async function onSubmit(values: z.infer<typeof forgotPasswordSchema>) {
     setIsLoading(true);
-    const auth = getAuth();
     try {
-      await sendPasswordResetEmail(auth, values.email);
+      const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        throw error;
+      }
+
       setIsEmailSent(true);
     } catch (error: any) {
       toast({

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -13,55 +12,75 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Shield, UserCog, UserX, UserCheck, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import {
-  useCollection,
-  useFirestore,
-  updateDocumentNonBlocking,
-} from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
-import { useMemoFirebase } from '@/firebase/firestore/use-memo-firebase';
+import { supabase } from '@/lib/supabase/client';
+import { useState, useEffect } from 'react';
 
 type UserProfile = {
   id: string;
   email: string;
-  createdAt: {
-    seconds: number;
-    nanoseconds: number;
-  };
+  created_at: string;
   status: 'pending' | 'active' | 'banned';
 };
 
 export default function AdminPanel() {
   const { toast } = useToast();
-  const firestore = useFirestore();
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState<string | null>(null);
 
-  const usersCollectionRef = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
-  );
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
-  const {
-    data: users,
-    isLoading: usersLoading,
-    error: usersError,
-  } = useCollection<UserProfile>(usersCollectionRef);
+  const fetchUsers = async () => {
+    try {
+      setUsersLoading(true);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  const handleStatusChange = (
+      if (error) {
+        throw error;
+      }
+
+      setUsers(data || []);
+    } catch (error: any) {
+      setUsersError(error.message);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (
     userId: string,
     newStatus: 'active' | 'banned'
   ) => {
-    if (!firestore) return;
-    const userDocRef = doc(firestore, 'users', userId);
-    updateDocumentNonBlocking(userDocRef, { status: newStatus });
-    toast({
-      title: 'User Updated',
-      description: `User status has been changed to ${newStatus}.`,
-    });
-  };
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ status: newStatus })
+        .eq('id', userId);
 
-  const sortedUsers = users?.sort(
-    (a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)
-  );
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: 'User Updated',
+        description: `User status has been changed to ${newStatus}.`,
+      });
+
+      // Refresh the users list
+      fetchUsers();
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to update user status.',
+      });
+    }
+  };
 
   return (
     <>
@@ -93,7 +112,7 @@ export default function AdminPanel() {
             )}
             {usersError && (
               <div className="text-center p-8 text-destructive">
-                Error loading users: {usersError.message}
+                Error loading users: {usersError}
               </div>
             )}
             {!usersLoading && !usersError && (
@@ -107,15 +126,13 @@ export default function AdminPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedUsers && sortedUsers.length > 0 ? (
-                    sortedUsers.map((u) => (
+                  {users && users.length > 0 ? (
+                    users.map((u) => (
                       <TableRow key={u.id}>
                         <TableCell className="font-medium">{u.email}</TableCell>
                         <TableCell>
-                          {u.createdAt
-                            ? new Date(
-                                u.createdAt.seconds * 1000
-                              ).toLocaleDateString()
+                          {u.created_at
+                            ? new Date(u.created_at).toLocaleDateString()
                             : 'N/A'}
                         </TableCell>
                         <TableCell>
@@ -124,8 +141,8 @@ export default function AdminPanel() {
                               u.status === 'active'
                                 ? 'secondary'
                                 : u.status === 'pending'
-                                ? 'outline'
-                                : 'destructive'
+                                  ? 'outline'
+                                  : 'destructive'
                             }
                           >
                             {u.status}
