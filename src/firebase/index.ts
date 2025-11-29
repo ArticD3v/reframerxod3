@@ -17,10 +17,9 @@ export function initializeFirebase() {
       // Attempt to initialize via Firebase App Hosting environment variables
       firebaseApp = initializeApp();
     } catch (e) {
-      // Only warn in production because it's normal to use the firebaseConfig to initialize
-      // during development
+      // Fallback to explicit config - this is normal for non-Firebase hosting (e.g., Azure, Vercel)
       if (process.env.NODE_ENV === "production") {
-        console.warn('Automatic initialization failed. Falling back to firebase config object.', e);
+        console.log('Auto-init failed, using explicit Firebase config (expected on Azure/Vercel)');
       }
       firebaseApp = initializeApp(firebaseConfig);
     }
